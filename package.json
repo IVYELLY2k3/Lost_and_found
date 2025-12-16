@@ -1,0 +1,28 @@
+{
+  "name": "lost_and_found",
+  "version": "1.0.0",
+  "description": "A smart web-based system for managing lost and found items in schools, powered by Google Computer Vision AI.",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
+    "@google/generative-ai": "^0.24.1",
+    "@tensorflow-models/mobilenet": "^2.1.1",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-cpu": "^4.22.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.0",
+    "jpeg-js": "^0.4.4",
+    "multer": "^2.0.2",
+    "node-vibrant": "^4.0.3",
+    "uuid": "^13.0.0"
+  }
+}

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Lost Item - FindIt</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <nav>
+                <a href="index.html" class="logo">
+                    <i class="fas fa-search-location"></i> FindIt
+                </a>
+                <div class="nav-links">
+                    <a href="index.html">Home</a>
+                    <a href="report.html" class="active">Report Lost</a>
+                    <a href="admin.html">Admin</a>
+                </div>
+            </nav>
+        </header>
+
+        <main class="animate-fade-in">
+            <div class="form-card">
+                <h2 style="text-align: center; margin-bottom: 20px;">Report a Lost Item</h2>
+                <form id="lostForm">
+                    <div class="form-group">
+                        <label>Contact Name</label>
+                        <input type="text" name="contactName" class="form-control" required placeholder="John Doe">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Contact Email</label>
+                        <input type="email" name="contactEmail" class="form-control" required
+                            placeholder="john@school.edu">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Date Lost</label>
+                        <input type="date" name="dateLost" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <label style="margin: 0;">Description</label>
+                            <button type="button" id="aiBtn" class="btn-sm"
+                                style="background: var(--accent); color: white; border: none; padding: 4px 10px; border-radius: 20px; font-size: 0.8em; opacity: 0.5; cursor: not-allowed;"
+                                disabled>
+                                <i class="fas fa-magic"></i> Auto-Fill with AI
+                            </button>
+                        </div>
+                        <textarea name="description" class="form-control" rows="3"
+                            placeholder="Describe the item manually or upload an image and click Auto-Fill..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Location Lost (Click map to pin exact spot)</label>
+
+                        <!-- Leaflet Map Container -->
+                        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+                            integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+                        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+                        <div id="map"
+                            style="height: 300px; width: 100%; border-radius: 12px; margin-bottom: 10px; z-index: 1;">
+                        </div>
+
+                        <input type="hidden" name="latitude" id="lat">
+                        <input type="hidden" name="longitude" id="lng">
+                        <p id="location-status" style="font-size: 0.9em; color: var(--text-muted); text-align: right;">
+                            Default: Viswajyothi Campus
+                        </p>
+                    </div>
+
+                    <script>
+                        document.addEventListener('DOMContentLoaded', () => {
+                            // 1. Initialize Map (Center: Viswajyothi College)
+                            const startLat = 9.9839;
+                            const startLng = 76.5796;
+
+                            const map = L.map('map').setView([startLat, startLng], 16);
+
+                            // 2. Add OpenStreetMap Tiles (Free)
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                attribution: '&copy; OpenStreetMap contributors'
+                            }).addTo(map);
+
+                            // 3. Add Draggable Marker
+                            const marker = L.marker([startLat, startLng], { draggable: true }).addTo(map);
+
+                            // 4. Update Inputs
+                            function updatePosition(lat, lng) {
+                                document.getElementById('lat').value = lat.toFixed(6);
+                                document.getElementById('lng').value = lng.toFixed(6);
+                                document.getElementById('location-status').innerHTML =
+                                    `<i class="fas fa-map-marker-alt"></i> Selected: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                                document.getElementById('location-status').style.color = 'var(--primary)';
+                            }
+
+                            // Initial Set
+                            updatePosition(startLat, startLng);
+
+                            // Events
+                            marker.on('dragend', function (e) {
+                                const pos = marker.getLatLng();
+                                updatePosition(pos.lat, pos.lng);
+                            });
+
+                            map.on('click', function (e) {
+                                marker.setLatLng(e.latlng);
+                                updatePosition(e.latlng.lat, e.latlng.lng);
+                            });
+                        });
+                    </script>
+
+                    <div class="form-group">
+                        <label>Reference Image (Important for AI Matching)</label>
+                        <div class="file-upload" id="dropZone">
+                            <i class="fas fa-cloud-upload-alt" style="font-size: 2rem; color: var(--primary);"></i>
+                            <p style="margin-top: 10px; color: var(--text-muted);">Click to upload or drag & drop</p>
+                            <input type="file" name="image" id="fileInput" accept="image/*" style="display: none;"
+                                required>
+                            <img id="preview" class="preview-image">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        Submit Report
+                    </button>
+                </form>
+
+                <div id="results" style="margin-top: 30px; display: none;"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const form = document.getElementById('lostForm');
+        const results = document.getElementById('results');
+        const aiBtn = document.getElementById('aiBtn');
+        const descBox = document.querySelector('textarea[name="description"]');
+
+        // File upload UI
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                // 1. Preview
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+
+                // 2. Enable AI Button
+                aiBtn.disabled = false;
+                aiBtn.style.opacity = '1';
+                aiBtn.style.cursor = 'pointer';
+                aiBtn.innerHTML = '<i class="fas fa-magic"></i> Auto-Fill with AI';
+            }
+        });
+
+        // AI Button Click
+        aiBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            aiBtn.disabled = true;
+            aiBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+            descBox.placeholder = "AI is analyzing the image...";
+
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success && data.analysis) {
+                    descBox.value = data.analysis.text;
+                } else {
+                    descBox.placeholder = "Could not analyze image. Please describe manually.";
+                }
+            } catch (err) {
+                console.error("Analysis failed", err);
+                descBox.placeholder = "Error analyzing image. Please describe manually.";
+            } finally {
+                aiBtn.disabled = false;
+                aiBtn.innerHTML = '<i class="fas fa-magic"></i> Auto-Fill with AI';
+            }
+        });
+
+        // Form Submit
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = form.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            btn.disabled = true;
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/api/lost', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let html = `<div class="alert alert-match" style="text-align: center;">✓ Report Filed Successfully!</div>`;
+
+                    if (data.matches && data.matches.length > 0) {
+                        html += `<h3><i class="fas fa-bell"></i> Potential Matches Found:</h3>`;
+                        data.matches.forEach(match => {
+                            html += `
+                                <div class="match-item" style="flex-wrap: wrap; align-items: center; justify-content: space-between;">
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <img src="${match.imageUrl}" alt="Match">
+                                        <div>
+                                            <strong>Found on ${match.dateFound}</strong><br>
+                                            <span style="font-size: 0.9em; color: #ccc;">${match.description}</span><br>
+                                            <div style="margin-top: 5px;">
+                                                ${match.tags.map(t => `<span class="tag">${t}</span>`).join('')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button class="btn-sm" type="button" style="background: var(--primary); margin-left: auto;" onclick="notifyMatch('${data.id}', '${match.id}')">
+                                        <i class="fas fa-bell"></i> Notify Admin
+                                    </button>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += `<p style="text-align: center; color: var(--text-muted); margin-top: 10px;">No immediate matches found. We will notify you if something turns up.</p>`;
+                    }
+
+                    results.innerHTML = html;
+                    results.style.display = 'block';
+                    form.reset();
+                    preview.style.display = 'none';
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+
+            } catch (err) {
+                console.error(err);
+                alert('An error occurred. Please try again.');
+                btn.disabled = false;
+            }
+        });
+
+        async function notifyMatch(lostId, foundId) {
+            const msg = prompt("Optional: Message for the admin (e.g., 'This is definitely mine!')");
+            if (msg === null) return;
+
+            try {
+                const res = await fetch('/api/notify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lostId, foundId, message: msg })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert('Admin has been notified!');
+                } else {
+                    alert('Error notifying admin.');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error notifying admin.');
+            }
+        }
+
+    </script>
+
+
+</body>
+
+</html>

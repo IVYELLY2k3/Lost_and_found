@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - FindIt</title>
+    <script>
+        if (!sessionStorage.getItem('isAdmin')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            gap: 20px;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <nav>
+                <a href="index.html" class="logo">
+                    <i class="fas fa-search-location"></i> FindIt
+                </a>
+                <div class="nav-links">
+                    <a href="index.html">Home</a>
+                    <a href="report.html">Report Lost</a>
+                    <a href="#" onclick="logout()" style="color: var(--error);">Logout <i
+                            class="fas fa-sign-out-alt"></i></a>
+                </div>
+            </nav>
+        </header>
+
+        <main class="animate-fade-in">
+            <h1 style="text-align: center; margin-bottom: 30px;">School Office Dashboard</h1>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('upload', this)">Register Found Item</button>
+                <button class="tab-btn" onclick="switchTab('database', this)">Item Database</button>
+                <button class="tab-btn" onclick="switchTab('notifications', this)">Notifications</button>
+            </div>
+
+            <!-- Upload Tab -->
+            <div id="upload" class="tab-content active">
+                <div class="form-card">
+                    <h2 style="text-align: center; margin-bottom: 20px;">Register Found Item</h2>
+                    <form id="foundForm">
+                        <div class="form-group">
+                            <label>Location Found</label>
+                            <input type="text" name="locationFound" class="form-control" required
+                                placeholder="Library, Gym, etc.">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Date Found</label>
+                            <input type="date" name="dateFound" class="form-control" required>
+                        </div>
+
+                        <div class="form-group">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                <label style="margin: 0;">Description</label>
+                                <button type="button" id="aiBtnAdmin" class="btn-sm"
+                                    style="background: var(--accent); color: white; border: none; padding: 4px 10px; border-radius: 20px; font-size: 0.8em; opacity: 0.5; cursor: not-allowed;"
+                                    disabled>
+                                    <i class="fas fa-magic"></i> Auto-Fill with AI
+                                </button>
+                            </div>
+                            <textarea name="description" class="form-control" rows="3"
+                                placeholder="Describe the item manually or upload an image and click Auto-Fill..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Item Image (AI Analysis)</label>
+                            <div class="file-upload" id="dropZoneAdmin">
+                                <i class="fas fa-camera" style="font-size: 2rem; color: var(--primary);"></i>
+                                <p style="margin-top: 10px; color: var(--text-muted);">Upload photo of found item</p>
+                                <input type="file" name="image" id="fileInputAdmin" accept="image/*"
+                                    style="display: none;" required>
+                                <img id="previewAdmin" class="preview-image">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                            Register & Check Matches
+                        </button>
+                    </form>
+                    <div id="foundResults" style="margin-top: 30px; display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Database Tab -->
+            <div id="database" class="tab-content">
+                <h3 style="margin-bottom: 20px;">Lost Reports</h3>
+                <div id="lostList" class="items-grid"></div>
+
+                <h3 style="margin-bottom: 20px; margin-top: 40px;">Found Items Inventory</h3>
+                <div id="foundList" class="items-grid"></div>
+            </div>
+
+            <!-- Notifications Tab -->
+            <div id="notifications" class="tab-content">
+                <h3 style="margin-bottom: 20px;">Claim Notifications</h3>
+                <div id="notificationList" class="items-grid" style="grid-template-columns: 1fr;"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Auth Logic
+        function logout() {
+            sessionStorage.removeItem('isAdmin');
+            window.location.href = 'index.html';
+        }
+
+        // Tab Logic
+        function switchTab(tabId, btnElement) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btnElement.classList.add('active');
+
+            if (tabId === 'database') loadDatabase();
+            if (tabId === 'notifications') loadNotifications();
+        }
+
+        // Upload Logic
+        const dropZone = document.getElementById('dropZoneAdmin');
+        const fileInput = document.getElementById('fileInputAdmin');
+        const preview = document.getElementById('previewAdmin');
+        const form = document.getElementById('foundForm');
+        const results = document.getElementById('foundResults');
+        const aiBtnAdmin = document.getElementById('aiBtnAdmin');
+        const descBox = document.querySelector('textarea[name="description"]');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                // 1. Preview
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+
+                // 2. Enable AI Button
+                aiBtnAdmin.disabled = false;
+                aiBtnAdmin.style.opacity = '1';
+                aiBtnAdmin.style.cursor = 'pointer';
+                aiBtnAdmin.innerHTML = '<i class="fas fa-magic"></i> Auto-Fill with AI';
+            }
+        });
+
+        // AI Button Click
+        aiBtnAdmin.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            aiBtnAdmin.disabled = true;
+            aiBtnAdmin.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+            descBox.placeholder = "AI is analyzing the image...";
+
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success && data.analysis) {
+                    descBox.value = data.analysis.text;
+                } else {
+                    descBox.placeholder = "Could not analyze image. Please describe manually.";
+                }
+            } catch (err) {
+                console.error("Analysis failed", err);
+                descBox.placeholder = "Error analyzing image. Please describe manually.";
+            } finally {
+                aiBtnAdmin.disabled = false;
+                aiBtnAdmin.innerHTML = '<i class="fas fa-magic"></i> Auto-Fill with AI';
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = form.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
+            btn.disabled = true;
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/api/found', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    let html = `<div class="alert alert-match" style="text-align: center;">✓ Item Registered!</div>`;
+
+                    if (data.matches && data.matches.length > 0) {
+                        html += `<h3><i class="fas fa-exclamation-circle"></i> MATCH FOUND IN LOST REPORTS:</h3>`;
+                        data.matches.forEach(match => {
+                            html += `
+                                <div class="match-item" style="border: 1px solid #ef4444;">
+                                    <img src="${match.imageUrl}" alt="Match">
+                                    <div>
+                                        <strong style="color: #f87171;">Lost by: ${match.contactName}</strong><br>
+                                        <span>Date Lost: ${match.dateLost}</span><br>
+                                        <span>Email: ${match.contactEmail}</span><br>
+                                        <div style="margin-top: 5px;">
+                                            ${match.tags.map(t => `<span class="tag">${t}</span>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += `<p style="text-align: center; color: var(--text-muted);">No matching lost reports found yet.</p>`;
+                    }
+
+                    results.innerHTML = html;
+                    results.style.display = 'block';
+                    form.reset();
+                    preview.style.display = 'none';
+                }
+
+            } catch (err) {
+                console.error(err);
+                alert('Error submitting report');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        // Database Logic
+        async function loadDatabase() {
+            try {
+                // Fetch Lost
+                const lostRes = await fetch('/api/lost');
+                const lostItems = await lostRes.json();
+                renderGrid('lostList', lostItems);
+
+                // Fetch Found
+                const foundRes = await fetch('/api/found');
+                const foundItems = await foundRes.json();
+                renderGrid('foundList', foundItems, true);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function deleteItem(type, id) {
+            if (!confirm('Delete this item permanently?')) return;
+            await fetch(`/api/items/${type}/${id}`, { method: 'DELETE' });
+            loadDatabase();
+        }
+
+        async function markClaimed(type, id) {
+            if (!confirm('Mark this item as returned/found?')) return;
+            await fetch(`/api/items/${type}/${id}/claim`, { method: 'PUT' });
+            loadDatabase();
+        }
+
+        function renderGrid(elementId, items, isFound = false) {
+            const container = document.getElementById(elementId);
+            const type = isFound ? 'found' : 'lost';
+
+            container.innerHTML = items.map(item => `
+                <div class="item-card">
+                    <img src="${item.imageUrl || 'https://via.placeholder.com/300?text=No+Image'}" class="item-image" loading="lazy">
+                    <div class="item-content">
+                        <div class="item-title">${item.description ? item.description.substring(0, 30) : 'Item'}...</div>
+                        <div class="item-desc">
+                            <i class="far fa-calendar"></i> ${isFound ? item.dateFound : item.dateLost}<br>
+                            ${isFound ? `<i class="fas fa-map-marker-alt"></i> ${item.locationFound}` : `<i class="far fa-envelope"></i> ${item.contactEmail}`}
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap;">
+                            ${(item.tags || []).slice(0, 3).map(t => `<span class="tag">${t}</span>`).join('')}
+                        </div>
+                        <div style="margin-top: 15px; display: flex; gap: 10px;">
+                            ${isFound ?
+                    `<button onclick="markClaimed('found', '${item.id}')" class="btn-sm success"><i class="fas fa-check"></i> Returned</button>` :
+                    `<button onclick="markClaimed('lost', '${item.id}')" class="btn-sm success"><i class="fas fa-check"></i> Found</button>`
+                }
+                            <button onclick="deleteItem('${type}', '${item.id}')" class="btn-sm danger"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            if (items.length === 0) container.innerHTML = '<p style="color: var(--text-muted);">No items found.</p>';
+        }
+
+        async function loadNotifications() {
+            try {
+                const res = await fetch('/api/notifications');
+                const notifications = await res.json();
+                const container = document.getElementById('notificationList');
+
+                container.innerHTML = notifications.map(n => `
+                    <div class="match-item" style="background: var(--surface); border: 1px solid var(--border);">
+                        <div style="flex: 1;">
+                            <strong style="color: var(--primary);">Claim Request</strong> <span style="font-size: 0.9em; color: var(--text-muted); float: right;">${n.timestamp.split('T')[0]}</span><br>
+                            <p style="margin: 5px 0;">${n.message || 'No message provided.'}</p>
+                            <p style="font-size: 0.9em; color: var(--text-muted);">
+                                Lost Item ID: <a href="#" style="color: var(--secondary);">${n.lostId}</a> | 
+                                Found Item ID: <a href="#" style="color: var(--secondary);">${n.foundId}</a>
+                            </p>
+                        </div>
+                    </div>
+                `).join('');
+
+                if (notifications.length === 0) container.innerHTML = '<p style="color: var(--text-muted);">No new notifications.</p>';
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    </script>
+</body>
+
+</html>
