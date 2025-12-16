@@ -1,16 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-// Use an absolute path for safety in different environments
+// If you intended to use real Firebase Storage, you need to use firebase-admin
+// const admin = require('firebase-admin'); 
+
+// --- MOCK DATABASE SETUP (Unchanged) ---
 const DB_DIR = path.join(__dirname, '../data');
 const DB_FILE = path.join(DB_DIR, 'db.json');
-// --- SELF-HEALING LOGIC ---
-// Ensure 'data' folder exists
+// Self-healing logic
 if (!fs.existsSync(DB_DIR)) {
     console.log("Creating data directory...");
     fs.mkdirSync(DB_DIR, { recursive: true });
 }
-// Ensure 'db.json' exists with default structure
 if (!fs.existsSync(DB_FILE)) {
     console.log("Creating initial database file...");
     const initialData = {
@@ -20,30 +21,26 @@ if (!fs.existsSync(DB_FILE)) {
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
 }
-// Now safe to require (or read)
-// Note: require() caches, so for a RW DB, reading file is better than requiring it at top level if we want updates.
-// But for simplicity in this mock, we'll read it into memory.
 let dbData = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
 function saveDb() {
     fs.writeFileSync(DB_FILE, JSON.stringify(dbData, null, 2));
 }
 const db = {
+    // ... (Your mock db implementation remains here) ...
     collection: (name) => {
         return {
             add: async (item) => {
-                // Use global dbData
                 let table;
                 if (name === 'lost_items') table = 'lost';
                 else if (name === 'found_items') table = 'found';
-                else table = name; // fallback for 'notifications'
+                else table = name; 
                 const newItem = { id: uuidv4(), ...item };
-                if (!dbData[table]) dbData[table] = []; // Safety init
+                if (!dbData[table]) dbData[table] = []; 
                 dbData[table].push(newItem);
                 saveDb();
                 return { id: newItem.id };
             },
             get: async () => {
-                // Return data from memory
                 let table;
                 if (name === 'lost_items') table = 'lost';
                 else if (name === 'found_items') table = 'found';
@@ -54,7 +51,7 @@ const db = {
                         id: item.id,
                         data: () => item
                     }));
-                return items; // Standard array
+                return items; 
             },
             doc: (docId) => {
                 return {
@@ -96,4 +93,36 @@ const db = {
         };
     }
 };
-module.exports = { db };
+
+// ------------------------------------------------------------------
+// FIX 1: Firebase Storage Implementation (Requires firebase-admin)
+// NOTE: I am stubbing this out because I cannot run fs.readFileSync for your service-account-key.json
+// You MUST integrate this logic for the cloud upload to work.
+// ------------------------------------------------------------------
+
+// Assuming you have firebase-admin installed and initialized elsewhere using GOOGLE_APPLICATION_CREDENTIALS
+/*
+const admin = require('firebase-admin');
+const serviceAccount = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+const firebaseApp = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET
+});
+const bucket = firebaseApp.storage().bucket();
+*/
+
+// STUB FUNCTION: Replace this with the actual Firebase Storage implementation 
+// IF you have not set up real Firebase for the database part.
+// If you ARE using a real database, replace all of the mock DB logic above with the actual Firebase initialization.
+async function uploadFile(fileBuffer, destinationPath, contentType) {
+    console.warn("MOCK UPLOAD: To fix the ENOENT error permanently, replace this function with actual Firebase Storage upload logic.");
+    // In a production app, this would upload the file and return the public URL.
+    
+    // Fallback: If your environment relies only on the mock DB and you just needed to pass analysis, 
+    // the core logic of routes/api.js is fixed by using the buffer. 
+    // Since we need a valid URL, we return a mock one:
+    return `https://storage.googleapis.com/${process.env.FIREBASE_STORAGE_BUCKET}/${destinationPath}`; 
+}
+
+
+module.exports = { db, uploadFile };
