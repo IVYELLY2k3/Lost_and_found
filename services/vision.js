@@ -3,7 +3,7 @@ const tf = require('@tensorflow/tfjs');
 require('@tensorflow/tfjs-backend-cpu');
 const mobilenet = require('@tensorflow-models/mobilenet');
 const jpeg = require('jpeg-js');
-const fs = require('fs');
+// const fs = require('fs'); // FIX 1: Removed fs since we use a buffer
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // --- GEMINI SETUP ---
@@ -38,16 +38,17 @@ async function loadModel() {
  * 1. Tries Gemini (Cloud AI) for best description.
  * 2. If Gemini fails/error, falls back to Local TensorFlow.
  */
-async function analyzeImage(imagePath) {
+// FIX 2: Accepts imageBuffer instead of imagePath
+async function analyzeImage(imageBuffer) { 
     // 1. Try Gemini First
     if (process.env.GEMINI_API_KEY) {
         try {
-            const imageBuffer = fs.readFileSync(imagePath);
+            // FIX 3: Use the passed-in buffer directly
             const base64Image = imageBuffer.toString('base64');
             const imagePart = {
                 inlineData: {
                     data: base64Image,
-                    mimeType: "image/jpeg"
+                    mimeType: "image/jpeg" // Assuming all uploads are JPEGs, adjust if necessary
                 },
             };
 
@@ -81,17 +82,19 @@ async function analyzeImage(imagePath) {
 
     // 2. Local Fallback (TensorFlow + Smart Color Logic)
     console.log("Using Local AI Fallback...");
-    return await analyzeImageLocal(imagePath);
+    // FIX 4: Pass buffer to local analysis
+    return await analyzeImageLocal(imageBuffer); 
 }
 
 // --- LOCAL LOGIC (The robust version) ---
-async function analyzeImageLocal(imagePath) {
+// FIX 5: Accepts imageBuffer instead of imagePath
+async function analyzeImageLocal(imageBuffer) { 
     try {
-        const imageBuffer = fs.readFileSync(imagePath);
-        const rawImageData = jpeg.decode(imageBuffer, { useTArray: true });
+        // FIX 6: Use the passed buffer directly
+        const rawImageData = jpeg.decode(imageBuffer, { useTArray: true }); 
 
         // --- 1. Ensembled Object Detection ---
-        let detectedItems = []; // Store top 3 unique
+        let detectedItems = []; 
         let isJewelry = false;
 
         try {
@@ -164,7 +167,8 @@ async function analyzeImageLocal(imagePath) {
         const centerColor = getCenterColor(rawImageData);
 
         // Secondary color from Palette (minus dominant)
-        const palette = await Vibrant.from(imageBuffer).getPalette();
+        // FIX 7: Pass buffer directly to Vibrant.from
+        const palette = await Vibrant.from(imageBuffer).getPalette(); 
         const vibrantColors = Object.values(palette)
             .sort((a, b) => b.population - a.population)
             .map(s => getColorName(s.r, s.g, s.b));
@@ -227,7 +231,7 @@ async function analyzeImageLocal(imagePath) {
         };
 
     } catch (error) {
-        console.error('Analysis Error:', error);
+        console.error('Local Analysis Error:', error);
         return { labels: ['unknown'], colors: [], text: 'Analysis unavailable.' };
     }
 }
