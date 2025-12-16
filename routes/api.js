@@ -2,19 +2,16 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { db } = require('../services/firebase'); // Now the local DB version
+// NOTE: Must ensure 'uploadFile' is exported from services/firebase
+const { db, uploadFile } = require('../services/firebase'); 
 const { analyzeImage } = require('../services/vision');
 const { v4: uuidv4 } = require('uuid');
 
-// Multer setup (Disk storage for Local Mode)
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'public/uploads/')
-    },
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname)) // Append extension
-    }
-});
+// ------------------------------------------------------------------
+// FIX 1: Use Multer Memory Storage for Cloud Deployment
+// Files are stored in req.file.buffer, avoiding disk write.
+// ------------------------------------------------------------------
+const storage = multer.memoryStorage(); 
 
 const upload = multer({ storage: storage });
 
@@ -26,7 +23,7 @@ function extractTagsFromText(text) {
         .filter(w => w.length > 2 && !stopwords.includes(w));
 }
 
-// Helper to find matches with Weighted Scoring
+// Helper to find matches with Weighted Scoring (No changes here)
 async function findMatches(newItem, targetCollection) {
     const snapshot = await db.collection(targetCollection).get();
     const matches = [];
@@ -57,26 +54,10 @@ async function findMatches(newItem, targetCollection) {
             }
         });
 
-        // Filtering Rules:
-        // 1. If we have a content match (score >= 10), it's a strong candidate.
-        // 2. If we ONLY have color matches, we need at least 3 matching colors to consider it (very similar palette), 
-        //    OR the user didn't provide any content tags so we are desperate.
-        //    But generally, color-only matches are bad. Let's filter them out unless they are very strong.
-
-        // Threshold:
-        // - Show if Score >= 10 (At least one keyword match)
-        // - OR if Score >= 3 AND commonTags.length >= 3 (Strong color overlap, fallback)
-
         if (score >= 10 || (score >= 2 && contentMatchCount === 0 && newItem.tags.length <= 3)) {
-            // The second condition is a fallback: if the SEARCHED item has almost no tags (no description), 
-            // we serve color matches. If it HAS description, we ignore color-only matches.
-
-            // Better logic:
             const hasDescription = newItem.tags.some(t => !colorKeywords.includes(t));
 
             if (hasDescription && contentMatchCount === 0) {
-                // User described something ("wallet") but we only matched on "black".
-                // This is likely a FALSE POSITIVE. Skip it.
                 return;
             }
 
@@ -92,8 +73,8 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).send('No image uploaded.');
 
-        // Analyze
-        const analysis = await analyzeImage(req.file.path);
+        // FIX 2: Pass file buffer instead of path to analysis function
+        const analysis = await analyzeImage(req.file.buffer); 
         
         // Return analysis without saving to DB yet
         res.json({ success: true, analysis });
@@ -111,19 +92,21 @@ router.post('/lost', upload.single('image'), async (req, res) => {
 
         const { contactName, contactEmail, description, dateLost } = req.body;
 
-        // 1. Analyze Image (Local)
-        // For local analysis, we pass the local file path
-        const analysis = await analyzeImage(req.file.path);
+        // 1. Analyze Image (using buffer)
+        const analysis = await analyzeImage(req.file.buffer);
 
-        // 2. Extract keywords from description
+        // 2. Upload image to Firebase Storage and get the public URL
+        const fileExtension = path.extname(req.file.originalname);
+        const storagePath = `lost_items/${uuidv4()}${fileExtension}`; 
+        const imageUrl = await uploadFile(req.file.buffer, storagePath, req.file.mimetype); // FIX 3: Use uploadFile
+
+        // 3. Extract keywords from description
         const textTags = extractTagsFromText(description);
         const finalTags = [...new Set([...analysis.labels, ...textTags])];
 
-        const imageUrl = `/uploads/${req.file.filename}`;
-
         const newItem = {
             type: 'lost',
-            imageUrl,
+            imageUrl, // FIX 4: Save the public URL instead of local path
             tags: finalTags,
             colors: analysis.colors,
             description,
@@ -134,10 +117,10 @@ router.post('/lost', upload.single('image'), async (req, res) => {
             status: 'active'
         };
 
-        // 3. Save to Local DB
+        // 4. Save to DB
         const docRef = await db.collection('lost_items').add(newItem);
 
-        // 4. Find Matches
+        // 5. Find Matches
         const matches = await findMatches(newItem, 'found_items');
 
         res.json({ success: true, id: docRef.id, matches, item: newItem });
@@ -155,15 +138,20 @@ router.post('/found', upload.single('image'), async (req, res) => {
 
         const { locationFound, description, dateFound } = req.body;
 
-        const analysis = await analyzeImage(req.file.path);
+        // 1. Analyze Image (using buffer)
+        const analysis = await analyzeImage(req.file.buffer);
+        
+        // 2. Upload image to Firebase Storage and get the public URL
+        const fileExtension = path.extname(req.file.originalname);
+        const storagePath = `found_items/${uuidv4()}${fileExtension}`;
+        const imageUrl = await uploadFile(req.file.buffer, storagePath, req.file.mimetype); // FIX 3: Use uploadFile
+
         const textTags = extractTagsFromText(description);
         const finalTags = [...new Set([...analysis.labels, ...textTags])];
 
-        const imageUrl = `/uploads/${req.file.filename}`;
-
         const newItem = {
             type: 'found',
-            imageUrl,
+            imageUrl, // FIX 4: Save the public URL instead of local path
             tags: finalTags,
             colors: analysis.colors,
             description,
@@ -184,7 +172,7 @@ router.post('/found', upload.single('image'), async (req, res) => {
     }
 });
 
-// GET /lost
+// GET /lost (No changes)
 router.get('/lost', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store');
@@ -199,7 +187,7 @@ router.get('/lost', async (req, res) => {
     }
 });
 
-// GET /found
+// GET /found (No changes)
 router.get('/found', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store');
@@ -212,7 +200,7 @@ router.get('/found', async (req, res) => {
     }
 });
 
-// DELETE /items/:type/:id (Admin delete)
+// DELETE /items/:type/:id (Admin delete - No changes)
 router.delete('/items/:type/:id', async (req, res) => {
     try {
         const { type, id } = req.params;
@@ -226,7 +214,7 @@ router.delete('/items/:type/:id', async (req, res) => {
     }
 });
 
-// PUT /items/:type/:id/claim (Mark as found/claimed)
+// PUT /items/:type/:id/claim (Mark as found/claimed - No changes)
 router.put('/items/:type/:id/claim', async (req, res) => {
     try {
         const { type, id } = req.params;
@@ -238,7 +226,7 @@ router.put('/items/:type/:id/claim', async (req, res) => {
     }
 });
 
-// POST /notify (User notifies admin of a match)
+// POST /notify (No changes)
 router.post('/notify', async (req, res) => {
     console.log('Received notification request:', req.body);
     try {
@@ -268,7 +256,7 @@ router.post('/notify', async (req, res) => {
     }
 });
 
-// GET /notifications (Admin fetch)
+// GET /notifications (Admin fetch - No changes)
 router.get('/notifications', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store');
